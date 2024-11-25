@@ -1,14 +1,8 @@
 use crate::GovernorError;
 use axum::body::Body;
-use governor::state::{InMemoryState, NotKeyed};
-use governor::{
-    clock::DefaultClock,
-    middleware::{NoOpMiddleware, RateLimitingMiddleware},
-    Quota, RateLimiter,
-};
+use governor::{DefaultDirectRateLimiter, Quota, RateLimiter};
 use http::{Method, Response};
-use std::time::Instant;
-use std::{fmt, marker::PhantomData, num::NonZeroU32, sync::Arc, time::Duration};
+use std::{fmt, num::NonZeroU32, sync::Arc, time::Duration};
 
 pub const DEFAULT_PERIOD: Duration = Duration::from_millis(500);
 pub const DEFAULT_BURST_SIZE: u32 = 8;
@@ -16,7 +10,7 @@ pub const DEFAULT_BURST_SIZE: u32 = 8;
 // Required by Governor's RateLimiter to share it across threads
 // See Governor User Guide: https://docs.rs/governor/0.6.0/governor/_guide/index.html
 // pub type SharedRateLimiter<M> = Arc<RateLimiter<NotKeyed, InMemoryState, DefaultClock, M>>;
-pub type SharedRateLimiter<M> = Arc<RateLimiter<NotKeyed, InMemoryState, DefaultClock, M>>;
+pub type SharedRateLimiter = Arc<DefaultDirectRateLimiter>;
 
 /// Helper struct for building a configuration for the governor middleware.
 ///
@@ -47,12 +41,11 @@ pub type SharedRateLimiter<M> = Arc<RateLimiter<NotKeyed, InMemoryState, Default
 ///     .unwrap();
 /// ```
 #[derive(Debug, Eq, Clone, PartialEq)]
-pub struct GovernorConfigBuilder<M: RateLimitingMiddleware<Instant>> {
+pub struct GovernorConfigBuilder {
     period: Duration,
     burst_size: u32,
     methods: Option<Vec<Method>>,
     error_handler: ErrorHandler,
-    middleware: PhantomData<M>,
 }
 
 // function for handling GovernorError and produce valid http Response type.
@@ -80,7 +73,7 @@ impl PartialEq for ErrorHandler {
 
 impl Eq for ErrorHandler {}
 
-impl Default for GovernorConfigBuilder<NoOpMiddleware> {
+impl Default for GovernorConfigBuilder {
     /// The default configuration which is suitable for most services.
     /// Allows burst with up to eight requests and replenishes one element after 500ms, based on peer IP.
     /// The values can be modified by calling other methods on this struct.
@@ -89,7 +82,7 @@ impl Default for GovernorConfigBuilder<NoOpMiddleware> {
     }
 }
 
-impl<M: RateLimitingMiddleware<Instant>> GovernorConfigBuilder<M> {
+impl GovernorConfigBuilder {
     /// Set handler function for handling [GovernorError]
     /// # Example
     /// ```rust
@@ -114,14 +107,13 @@ impl<M: RateLimitingMiddleware<Instant>> GovernorConfigBuilder<M> {
 
 /// Sets the default Governor Config and defines all the different configuration functions
 /// This one is used when the default PeerIpKeyExtractor is used
-impl<M: RateLimitingMiddleware<Instant>> GovernorConfigBuilder<M> {
+impl GovernorConfigBuilder {
     pub fn const_default() -> Self {
         GovernorConfigBuilder {
             period: DEFAULT_PERIOD,
             burst_size: DEFAULT_BURST_SIZE,
             methods: None,
             error_handler: ErrorHandler::default(),
-            middleware: PhantomData,
         }
     }
     /// Set the interval after which one element of the quota is replenished.
@@ -164,7 +156,7 @@ impl<M: RateLimitingMiddleware<Instant>> GovernorConfigBuilder<M> {
 }
 
 /// Sets configuration options when any Key Extractor is provided
-impl<M: RateLimitingMiddleware<Instant>> GovernorConfigBuilder<M> {
+impl GovernorConfigBuilder {
     /// Set the interval after which one element of the quota is replenished.
     ///
     /// **The interval must not be zero.**
@@ -212,17 +204,14 @@ impl<M: RateLimitingMiddleware<Instant>> GovernorConfigBuilder<M> {
 
     /// Finish building the configuration and return the configuration for the middleware.
     /// Returns `None` if either burst size or period interval are zero.
-    pub fn finish(&mut self) -> Option<GovernorConfig<M>> {
+    pub fn finish(&mut self) -> Option<GovernorConfig> {
         if self.burst_size != 0 && self.period.as_nanos() != 0 {
             Some(GovernorConfig {
-                limiter: Arc::new(
-                    RateLimiter::direct(
-                        Quota::with_period(self.period)
-                            .unwrap()
-                            .allow_burst(NonZeroU32::new(self.burst_size).unwrap()),
-                    )
-                    .with_middleware::<M>(),
-                ),
+                limiter: Arc::new(RateLimiter::direct(
+                    Quota::with_period(self.period)
+                        .unwrap()
+                        .allow_burst(NonZeroU32::new(self.burst_size).unwrap()),
+                )),
                 methods: self.methods.clone(),
                 error_handler: self.error_handler.clone(),
             })
@@ -234,19 +223,19 @@ impl<M: RateLimitingMiddleware<Instant>> GovernorConfigBuilder<M> {
 
 #[derive(Debug, Clone)]
 /// Configuration for the Governor middleware.
-pub struct GovernorConfig<M: RateLimitingMiddleware<Instant>> {
-    limiter: SharedRateLimiter<M>,
+pub struct GovernorConfig {
+    limiter: SharedRateLimiter,
     methods: Option<Vec<Method>>,
     error_handler: ErrorHandler,
 }
 
-impl<M: RateLimitingMiddleware<Instant>> GovernorConfig<M> {
-    pub fn limiter(&self) -> &SharedRateLimiter<M> {
+impl GovernorConfig {
+    pub fn limiter(&self) -> &SharedRateLimiter {
         &self.limiter
     }
 }
 
-impl Default for GovernorConfig<NoOpMiddleware> {
+impl Default for GovernorConfig {
     /// The default configuration which is suitable for most services.
     /// Allows bursts with up to eight requests and replenishes one element after 500ms, based on peer IP.
     fn default() -> Self {
@@ -254,7 +243,7 @@ impl Default for GovernorConfig<NoOpMiddleware> {
     }
 }
 
-impl<M: RateLimitingMiddleware<Instant>> GovernorConfig<M> {
+impl GovernorConfig {
     /// A default configuration for security related services.
     /// Allows bursts with up to two requests and replenishes one element after four seconds, based on peer IP.
     ///
@@ -266,7 +255,6 @@ impl<M: RateLimitingMiddleware<Instant>> GovernorConfig<M> {
             burst_size: 2,
             methods: None,
             error_handler: ErrorHandler::default(),
-            middleware: PhantomData,
         }
         .finish()
         .unwrap()
@@ -277,14 +265,14 @@ impl<M: RateLimitingMiddleware<Instant>> GovernorConfig<M> {
 /// contains everything needed to implement a middleware
 /// https://stegosaurusdormant.com/understanding-derive-clone/
 #[derive(Debug)]
-pub struct Governor<M: RateLimitingMiddleware<Instant>, S> {
-    pub limiter: SharedRateLimiter<M>,
+pub struct Governor<S> {
+    pub limiter: SharedRateLimiter,
     pub methods: Option<Vec<Method>>,
     pub inner: S,
     error_handler: ErrorHandler,
 }
 
-impl<M: RateLimitingMiddleware<Instant>, S: Clone> Clone for Governor<M, S> {
+impl<S: Clone> Clone for Governor<S> {
     fn clone(&self) -> Self {
         Self {
             limiter: self.limiter.clone(),
@@ -295,9 +283,9 @@ impl<M: RateLimitingMiddleware<Instant>, S: Clone> Clone for Governor<M, S> {
     }
 }
 
-impl<M: RateLimitingMiddleware<Instant>, S> Governor<M, S> {
+impl<S> Governor<S> {
     /// Create new governor middleware factory from configuration.
-    pub fn new(inner: S, config: &GovernorConfig<M>) -> Self {
+    pub fn new(inner: S, config: &GovernorConfig) -> Self {
         Governor {
             limiter: config.limiter.clone(),
             methods: config.methods.clone(),

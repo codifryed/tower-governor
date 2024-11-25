@@ -7,7 +7,6 @@ pub mod errors;
 pub mod governor;
 use crate::governor::{Governor, GovernorConfig};
 use ::governor::clock::{Clock, DefaultClock};
-use ::governor::middleware::{NoOpMiddleware, RateLimitingMiddleware};
 use axum::body::Body;
 pub use errors::GovernorError;
 use http::response::Response;
@@ -17,23 +16,16 @@ use http::HeaderMap;
 use pin_project::pin_project;
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use std::time::Instant;
 use std::{future::Future, pin::Pin};
 use tower::{Layer, Service};
 
 /// The Layer type that implements tower::Layer and is passed into `.layer()`
-pub struct GovernorLayer<M>
-where
-    M: RateLimitingMiddleware<Instant>,
-{
-    pub config: Arc<GovernorConfig<M>>,
+pub struct GovernorLayer {
+    pub config: Arc<GovernorConfig>,
 }
 
-impl<M, S> Layer<S> for GovernorLayer<M>
-where
-    M: RateLimitingMiddleware<Instant>,
-{
-    type Service = Governor<M, S>;
+impl<S> Layer<S> for GovernorLayer {
+    type Service = Governor<S>;
 
     fn layer(&self, inner: S) -> Self::Service {
         Governor::new(inner, &self.config)
@@ -41,7 +33,7 @@ where
 }
 
 /// https://stegosaurusdormant.com/understanding-derive-clone/
-impl<M: RateLimitingMiddleware<Instant>> Clone for GovernorLayer<M> {
+impl Clone for GovernorLayer {
     fn clone(&self) -> Self {
         Self {
             config: self.config.clone(),
@@ -49,7 +41,7 @@ impl<M: RateLimitingMiddleware<Instant>> Clone for GovernorLayer<M> {
     }
 }
 // Implement tower::Service for Governor
-impl<S, ReqBody> Service<Request<ReqBody>> for Governor<NoOpMiddleware, S>
+impl<S, ReqBody> Service<Request<ReqBody>> for Governor<S>
 where
     S: Service<Request<ReqBody>, Response = Response<Body>>,
 {
