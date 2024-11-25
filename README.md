@@ -67,14 +67,6 @@ async fn main() {
 
     let governor_limiter = governor_conf.limiter().clone();
     let interval = Duration::from_secs(60);
-    // a separate background task to clean up
-    std::thread::spawn(move || {
-        loop {
-            std::thread::sleep(interval);
-            tracing::info!("rate limiting storage size: {}", governor_limiter.len());
-            governor_limiter.retain_recent();
-        }
-    });
 
     // build our application with a route
     let app = Router::new()
