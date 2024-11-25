@@ -7,7 +7,7 @@ pub mod errors;
 pub mod governor;
 pub mod key_extractor;
 use crate::governor::{Governor, GovernorConfig};
-use ::governor::clock::{Clock, DefaultClock, QuantaInstant};
+use ::governor::clock::{Clock, DefaultClock};
 use ::governor::middleware::{NoOpMiddleware, RateLimitingMiddleware, StateInformationMiddleware};
 use axum::body::Body;
 pub use errors::GovernorError;
@@ -21,13 +21,14 @@ use pin_project::pin_project;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::{future::Future, pin::Pin, task::ready};
+use std::time::Instant;
 use tower::{Layer, Service};
 
 /// The Layer type that implements tower::Layer and is passed into `.layer()`
 pub struct GovernorLayer<K, M>
 where
     K: KeyExtractor,
-    M: RateLimitingMiddleware<QuantaInstant>,
+    M: RateLimitingMiddleware<Instant>,
 {
     pub config: Arc<GovernorConfig<K, M>>,
 }
@@ -35,7 +36,7 @@ where
 impl<K, M, S> Layer<S> for GovernorLayer<K, M>
 where
     K: KeyExtractor,
-    M: RateLimitingMiddleware<QuantaInstant>,
+    M: RateLimitingMiddleware<Instant>,
 {
     type Service = Governor<K, M, S>;
 
@@ -45,7 +46,7 @@ where
 }
 
 /// https://stegosaurusdormant.com/understanding-derive-clone/
-impl<K: KeyExtractor, M: RateLimitingMiddleware<QuantaInstant>> Clone for GovernorLayer<K, M> {
+impl<K: KeyExtractor, M: RateLimitingMiddleware<Instant>> Clone for GovernorLayer<K, M> {
     fn clone(&self) -> Self {
         Self {
             config: self.config.clone(),
