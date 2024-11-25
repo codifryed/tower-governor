@@ -14,23 +14,21 @@ categories = ["web-programming::http-server"]
 
 [dependencies]
 forwarded-header-value = "0.1.1"
-governor = "0.7.0"
-http = "1.0.0"
-pin-project = "1.0.12"
-thiserror = "1.0.37"
+governor = { version = "0.7.0" }
+http = "1.1.0"
+pin-project = "1.1.7"
+thiserror = "2.0.3"
 tower = "0.5.1"
-tracing = { version = "0.1.37", features = ["attributes"] }
+tracing = { version = "0.1.40", features = ["attributes"] }
 
 axum = { version = "0.7", optional = true }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
-hyper = "1"
 reqwest = { version = "0.12", default-features = false, features = ["json"] }
-serde_json = "1.0.89"
 tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "0.6", features = ["trace"] }
-tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 
 [features]
 default = ["axum"]
