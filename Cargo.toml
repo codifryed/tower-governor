@@ -5,7 +5,7 @@ description = "A rate-limiting middleware for Tower backed by the governor crate
 repository = "https://github.com/benwis/tower-governor"
 license = "MIT OR Apache-2.0"
 readme = "README.md"
-version = "0.4.3"
+version = "0.7.0"
 edition = "2021"
 keywords = ["axum", "tower", "tonic", "rate-limit", "governor"]
 categories = ["web-programming::http-server"]
@@ -14,14 +14,14 @@ categories = ["web-programming::http-server"]
 
 [dependencies]
 forwarded-header-value = "0.1.1"
-governor = { version = "0.7.0", default-features = false, features = ["std"] }
+governor = { version = "0.8.0", default-features = false, features = ["std"] }
 http = "1.1.0"
 pin-project = "1.1.7"
 thiserror = "2.0.3"
 tower = "0.5.1"
 tracing = { version = "0.1.40", features = ["attributes"] }
 
-axum = { version = "0.7", optional = true }
+axum = { version = "0.8", optional = true }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
